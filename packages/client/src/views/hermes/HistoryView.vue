@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { type Session } from '@/stores/hermes/chat'
+import { type Session, useChatStore } from '@/stores/hermes/chat'
 import { useAppStore } from '@/stores/hermes/app'
 import { useProfilesStore } from '@/stores/hermes/profiles'
 import { useSessionBrowserPrefsStore } from '@/stores/hermes/session-browser-prefs'
@@ -15,6 +15,7 @@ import OutlinePanel from '@/components/hermes/chat/OutlinePanel.vue'
 import { batchDeleteSessions, deleteSession, fetchHermesSessions, fetchHermesSession, fetchSessionMessagesPage, importHermesSession, type HermesMessage, type SessionSummary } from '@/api/hermes/sessions'
 
 const appStore = useAppStore()
+const chatStore = useChatStore()
 const profilesStore = useProfilesStore()
 const sessionBrowserPrefsStore = useSessionBrowserPrefsStore()
 const message = useMessage()
@@ -95,14 +96,20 @@ const contextSessionPinned = computed(() =>
   contextSessionId.value ? sessionBrowserPrefsStore.isPinned(contextSessionId.value) : false,
 )
 
+const contextSessionArchived = computed(() =>
+  contextSessionId.value ? sessionBrowserPrefsStore.isArchived(contextSessionId.value) : false,
+)
+
 const contextMenuOptions = computed<DropdownOption[]>(() => {
   const options: DropdownOption[] = [
+    { label: t('chat.openInChat'), key: 'open-in-chat' },
     {
       label: t('chat.importToWebUi'),
       key: 'import-webui',
       disabled: Boolean(contextSessionSummary.value?.webui_imported),
     },
     { label: t(contextSessionPinned.value ? 'chat.unpin' : 'chat.pin'), key: 'pin' },
+    { label: t(contextSessionArchived.value ? 'chat.unarchiveFromHistory' : 'chat.archiveToHistory'), key: 'archive' },
     { label: t('chat.copySessionLink'), key: 'copy-link' },
     { label: t('chat.copySessionId'), key: 'copy-id' },
   ]
@@ -568,17 +575,63 @@ async function handleImportToWebUi(sessionId: string) {
   message.error(t('chat.importSessionFailed'))
 }
 
+function resolveSummaryProvider(summary: SessionSummary): string | undefined {
+  if (summary.provider) return summary.provider
+  const profileName = summary.profile || profilesStore.activeProfileName || 'default'
+  const profileGroups = appStore.profileModelGroups.find(entry => entry.profile === profileName)?.groups || []
+  return profileGroups.find(group => group.models.includes(summary.model))?.provider
+}
+
+async function handleOpenInChat(sessionId: string) {
+  const summary = findHistorySession(sessionId)
+  if (!summary) {
+    message.error(t('chat.sessionNotFound'))
+    return
+  }
+
+  const sessionProfile = summary.profile || null
+  try {
+    const result = await importHermesSession(sessionId, sessionProfile)
+    if (!result.ok) {
+      message.error(t('chat.importSessionFailed'))
+      return
+    }
+
+    await chatStore.loadSessions()
+    await loadHermesSessions()
+
+    const latestSummary = findHistorySession(sessionId) || summary
+    const sessionData = sessionFromSummary(latestSummary)
+    sessionData.profile = latestSummary.profile || sessionProfile || undefined
+    sessionData.provider = resolveSummaryProvider(latestSummary)
+    chatStore.addOrUpdateSession(sessionData)
+
+    await router.push({
+      name: 'hermes.session',
+      params: { sessionId },
+      query: sessionProfile ? { profile: sessionProfile } : undefined,
+    })
+  } catch {
+    message.error(t('chat.importSessionFailed'))
+  }
+}
+
 async function handleContextMenuSelect(key: string) {
   showContextMenu.value = false
   if (!contextSessionId.value) return
   if (key === 'pin') {
     sessionBrowserPrefsStore.togglePinned(contextSessionId.value)
+  } else if (key === 'archive') {
+    const archived = sessionBrowserPrefsStore.toggleArchived(contextSessionId.value)
+    message.success(t(archived ? 'chat.archivedToHistory' : 'chat.unarchivedFromHistory'))
   } else if (key === 'copy-link') {
     await copySessionLink(contextSessionId.value)
   } else if (key === 'copy-id') {
     await copySessionId(contextSessionId.value)
   } else if (key === 'import-webui') {
     await handleImportToWebUi(contextSessionId.value)
+  } else if (key === 'open-in-chat') {
+    await handleOpenInChat(contextSessionId.value)
   }
 }
 
@@ -592,6 +645,7 @@ async function handleDeleteSession(id: string, profile?: string | null) {
   }
 
   sessionBrowserPrefsStore.removePinned(id)
+  sessionBrowserPrefsStore.removeArchived(id)
   hermesSessions.value = hermesSessions.value.filter(s => s.id !== id)
 
   if (historySessionId.value === id) {
@@ -625,6 +679,7 @@ async function handleBatchDelete() {
     if (result.deleted > 0) {
       for (const target of targets) {
         sessionBrowserPrefsStore.removePinned(target.id)
+        sessionBrowserPrefsStore.removeArchived(target.id)
       }
 
       await loadHermesSessions()
@@ -749,6 +804,7 @@ function handleBatchDeleteConfirm() {
             :session="s"
             :active="s.id === historySessionId"
             :pinned="true"
+            :archived="sessionBrowserPrefsStore.isArchived(s.id)"
             :can-delete="true"
             :streaming="false"
             :selectable="isBatchMode"
@@ -774,6 +830,7 @@ function handleBatchDeleteConfirm() {
               :session="s"
               :active="s.id === historySessionId"
               :pinned="false"
+              :archived="sessionBrowserPrefsStore.isArchived(s.id)"
               :can-delete="true"
               :streaming="false"
               :selectable="isBatchMode"

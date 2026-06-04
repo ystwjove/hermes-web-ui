@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { NModal, NForm, NFormItem, NInput, NButton, NSwitch, NText, useMessage } from 'naive-ui'
+import { computed, onMounted, ref } from 'vue'
+import { NModal, NForm, NFormItem, NInput, NButton, NSwitch, NSelect, NText, useMessage } from 'naive-ui'
 import { useProfilesStore } from '@/stores/hermes/profiles'
+import { useModelsStore } from '@/stores/hermes/models'
+import { request } from '@/api/client'
 import { useI18n } from 'vue-i18n'
 
 const emit = defineEmits<{
@@ -11,13 +13,40 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const profilesStore = useProfilesStore()
+const modelsStore = useModelsStore()
 const message = useMessage()
 
 const showModal = ref(true)
 const loading = ref(false)
 const name = ref('')
 const clone = ref(false)
+const selectedModel = ref<string | null>(null)
 const nameValidationMessage = ref('')
+
+onMounted(() => {
+  if (modelsStore.allModels.length === 0) {
+    void modelsStore.fetchProviders()
+  }
+})
+
+const modelOptions = computed(() => {
+  const groups = new Map<string, { label: string; models: string[] }>()
+  for (const model of modelsStore.allModels) {
+    const group = groups.get(model.provider) || { label: model.label, models: [] }
+    group.models.push(model.id)
+    groups.set(model.provider, group)
+  }
+
+  return Array.from(groups.entries()).map(([provider, group]) => ({
+    type: 'group' as const,
+    label: group.label,
+    key: provider,
+    children: group.models.map(modelId => ({
+      label: modelId,
+      value: `${provider}::${modelId}`,
+    })),
+  }))
+})
 
 function handleNameInput(value: string) {
   // 过滤掉不符合规则的字符，只保留小写字母、数字、下划线和连字符
@@ -56,6 +85,23 @@ async function handleSave() {
         message.info(`${t('profiles.createSuccess', { name: name.value.trim() })}\n${parts.join('\n')}`, { duration: 6000 })
       } else {
         message.success(t('profiles.createSuccess', { name: name.value.trim() }))
+      }
+      if (selectedModel.value) {
+        const [provider, modelId] = selectedModel.value.split('::')
+        if (provider && modelId) {
+          try {
+            await request('/api/hermes/config/model', {
+              method: 'PUT',
+              body: JSON.stringify({
+                default: modelId,
+                provider,
+                profile: name.value.trim(),
+              }),
+            })
+          } catch {
+            message.warning(t('profiles.modelSetFailed'))
+          }
+        }
       }
       emit('saved')
     } else {
@@ -100,6 +146,19 @@ function handleClose() {
       <NText v-if="clone" depth="3" style="font-size: 12px;">
         {{ t('profiles.cloneCleanupNotice') }}
       </NText>
+
+      <NFormItem :label="t('profiles.selectModel')" class="model-form-item">
+        <NSelect
+          v-model:value="selectedModel"
+          :options="modelOptions"
+          :placeholder="t('profiles.selectModelPlaceholder')"
+          clearable
+          filterable
+        />
+      </NFormItem>
+      <NText depth="3" style="font-size: 12px;">
+        {{ t('profiles.selectModelHint') }}
+      </NText>
     </NForm>
 
     <template #footer>
@@ -119,12 +178,8 @@ function handleClose() {
   justify-content: flex-end;
   gap: 8px;
 }
-</style>
 
-<style scoped lang="scss">
-.modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
+.model-form-item {
+  margin-top: 12px;
 }
 </style>

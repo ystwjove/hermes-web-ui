@@ -17,9 +17,11 @@ const props = withDefaults(defineProps<{
   selectable?: boolean
   selected?: boolean
   showProfile?: boolean
+  archived?: boolean
   to?: string
 }>(), {
   showProfile: true,
+  archived: false,
 })
 
 const emit = defineEmits<{
@@ -128,6 +130,7 @@ onUnmounted(() => {
           <svg v-if="streaming" class="session-item-streaming" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
           {{ session.title }}
         </span>
+        <span v-if="archived" class="session-item-archived-badge">{{ t('chat.archivedBadge') }}</span>
         <NTooltip v-if="profileModelsMissing" trigger="click" placement="top">
           <template #trigger>
             <button class="session-item-warning" type="button" @click.stop.prevent>
@@ -192,5 +195,18 @@ onUnmounted(() => {
   font-weight: 700;
   line-height: 14px;
   cursor: pointer;
+}
+
+.session-item-archived-badge {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: var(--primary-color-suppress, rgba(99, 102, 241, 0.12));
+  color: var(--primary-color, #6366f1);
+  letter-spacing: 0.3px;
+  white-space: nowrap;
 }
 </style>

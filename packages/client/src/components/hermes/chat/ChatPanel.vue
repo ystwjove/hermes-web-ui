@@ -131,7 +131,7 @@ function sortSessionsWithActiveFirst(items: Session[]): Session[] {
 const pinnedSessions = computed(() =>
   sortSessionsWithActiveFirst(
     chatStore.sessions.filter((session) =>
-      sessionBrowserPrefsStore.isPinned(session.id),
+      sessionBrowserPrefsStore.isPinned(session.id) && !sessionBrowserPrefsStore.isArchived(session.id),
     ),
   ),
 );
@@ -139,7 +139,7 @@ const pinnedSessions = computed(() =>
 const unpinnedSessions = computed(() =>
   sortSessionsWithActiveFirst(
     chatStore.sessions.filter(
-      (session) => !sessionBrowserPrefsStore.isPinned(session.id),
+      (session) => !sessionBrowserPrefsStore.isPinned(session.id) && !sessionBrowserPrefsStore.isArchived(session.id),
     ),
   ),
 );
@@ -325,6 +325,7 @@ async function copySessionId(id?: string) {
 
 function handleDeleteSession(id: string) {
   sessionBrowserPrefsStore.removePinned(id);
+  sessionBrowserPrefsStore.removeArchived(id);
   chatStore.deleteSession(id);
   message.success(t("chat.sessionDeleted"));
 }
@@ -445,6 +446,11 @@ const contextMenuOptions = computed(() => {
   }
 
   options.push({
+    label: t("chat.archiveToHistory"),
+    key: "archive",
+  })
+
+  options.push({
     label: t("chat.export"),
     key: "export",
     children: [
@@ -497,6 +503,11 @@ async function handleContextMenuSelect(key: string) {
   if (!contextSessionId.value) return;
   if (key === "pin") {
     sessionBrowserPrefsStore.togglePinned(contextSessionId.value);
+    return;
+  }
+  if (key === "archive") {
+    sessionBrowserPrefsStore.toggleArchived(contextSessionId.value);
+    message.success(t("chat.archivedToHistory"));
     return;
   }
   if (key === "copy-link") {

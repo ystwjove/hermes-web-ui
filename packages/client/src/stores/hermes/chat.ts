@@ -7,6 +7,7 @@ import { ref, computed } from 'vue'
 import { useAppStore } from './app'
 import { useProfilesStore } from './profiles'
 import { useSettingsStore } from './settings'
+import { i18n } from '@/i18n'
 import { primeCompletionSound, playCompletionSound } from '@/utils/completion-sound'
 import { detectThinkingBoundary } from '@/utils/thinking-parser'
 
@@ -785,11 +786,19 @@ export const useChatStore = defineStore('chat', () => {
     return session
   }
 
+  // sessionId -> pending model switch notification to flush after the active run finishes.
+  const pendingModelSwitches = ref(new Map<string, { modelId: string; provider: string; oldModelName: string }>())
+
   async function switchSessionModel(modelId: string, provider?: string, sessionId?: string): Promise<boolean> {
+    const appStore = useAppStore()
     const targetId = sessionId || activeSession.value?.id
     if (!targetId) return false
+
+    const oldTarget = sessions.value.find(s => s.id === targetId)
+    const oldModelName = oldTarget?.model ? appStore.displayModelName(oldTarget.model, oldTarget.provider) : ''
     const ok = await setSessionModel(targetId, modelId, provider || '')
     if (!ok) return false
+
     const target = sessions.value.find(s => s.id === targetId)
     if (target) {
       target.model = modelId
@@ -799,7 +808,45 @@ export const useChatStore = defineStore('chat', () => {
       activeSession.value.model = modelId
       activeSession.value.provider = provider || ''
     }
+
+    const newModelName = appStore.displayModelName(modelId, provider || '')
+    const busy = streamStates.value.has(targetId) || serverWorking.value.has(targetId)
+    if (busy) {
+      pendingModelSwitches.value.set(targetId, { modelId, provider: provider || '', oldModelName })
+      addMessage(targetId, {
+        id: uid(),
+        role: 'system',
+        content: i18n.global.t('chat.modelSwitchQueued', { newName: newModelName }),
+        timestamp: Date.now(),
+      })
+      return true
+    }
+
+    pendingModelSwitches.value.delete(targetId)
+    addModelSwitchNotification(targetId, oldModelName, newModelName)
     return true
+  }
+
+  function flushPendingModelSwitch(sessionId: string) {
+    const pending = pendingModelSwitches.value.get(sessionId)
+    if (!pending) return
+    pendingModelSwitches.value.delete(sessionId)
+    const appStore = useAppStore()
+    const newModelName = appStore.displayModelName(pending.modelId, pending.provider)
+    addModelSwitchNotification(sessionId, pending.oldModelName, newModelName)
+  }
+
+  function addModelSwitchNotification(sessionId: string, oldName: string, newName: string) {
+    const { t } = i18n.global
+    const text = oldName
+      ? t('chat.modelSwitched', { oldName, newName })
+      : t('chat.modelSwitchedTo', { newName })
+    addMessage(sessionId, {
+      id: uid(),
+      role: 'system',
+      content: text,
+      timestamp: Date.now(),
+    })
   }
 
   async function deleteSession(sessionId: string) {
@@ -1429,9 +1476,9 @@ export const useChatStore = defineStore('chat', () => {
       const cleanup = () => {
         streamStates.value.delete(sid)
         serverWorking.value.delete(sid)
+        // If a model switch was deferred while this run was active, flush it now
+        flushPendingModelSwitch(sid)
       }
-
-      // Per-active-run flags used to detect silently-swallowed errors at run.completed.
       // hermes-agent occasionally emits run.completed with empty output and no
       // usage when the agent layer caught an upstream error (e.g. invalid API
       // key). We need to distinguish: (a) run with assistant text produced,
@@ -2033,6 +2080,8 @@ export const useChatStore = defineStore('chat', () => {
       serverWorking.value.delete(sid)
       // Unregister from global session handlers
       unregisterSessionHandlers(sid)
+      // If a model switch was deferred while this run was active, flush it now
+      flushPendingModelSwitch(sid)
     }
 
     const closeStreamingAssistant = () => {

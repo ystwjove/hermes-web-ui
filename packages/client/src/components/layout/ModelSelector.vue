@@ -3,11 +3,15 @@ import { ref, computed } from 'vue'
 import { NModal, NInput, NSelect } from 'naive-ui'
 import { useAppStore } from '@/stores/hermes/app'
 import { useProfilesStore } from '@/stores/hermes/profiles'
+import { useChatStore } from '@/stores/hermes/chat'
+import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
 const appStore = useAppStore()
 const profilesStore = useProfilesStore()
+const chatStore = useChatStore()
+const route = useRoute()
 
 const showModal = ref(false)
 const searchQuery = ref('')
@@ -21,8 +25,31 @@ const activeModelGroups = computed(() => {
   return profileModels?.groups || []
 })
 
+// Determine whether we are on a conversation route with an active session
+const isConversationRoute = computed(() => {
+  const name = route.name as string | undefined
+  return name === 'hermes.chat' || name === 'hermes.session'
+})
+
+const activeSession = computed(() => chatStore.activeSession)
+
+// The effective model & provider that the selector should display
+const effectiveModel = computed(() => {
+  if (isConversationRoute.value && activeSession.value) {
+    return activeSession.value.model || appStore.selectedModel
+  }
+  return appStore.selectedModel
+})
+
+const effectiveProvider = computed(() => {
+  if (isConversationRoute.value && activeSession.value) {
+    return activeSession.value.provider || ''
+  }
+  return appStore.selectedProvider
+})
+
 const providerOptions = computed(() => {
-  const current = appStore.selectedProvider
+  const current = effectiveProvider.value
   customProvider.value = current
   return activeModelGroups.value.map(g => ({ label: g.label, value: g.provider }))
 })
@@ -39,14 +66,14 @@ const modelGroupsWithCustom = computed(() =>
 
 const selectedModelInActiveProfile = computed(() =>
   modelGroupsWithCustom.value.some(group =>
-    group.provider === appStore.selectedProvider && group.models.includes(appStore.selectedModel),
+    group.provider === effectiveProvider.value && group.models.includes(effectiveModel.value),
   ),
 )
 
 const selectedDisplayName = computed(() =>
   selectedModelInActiveProfile.value
-    ? appStore.displayModelName(appStore.selectedModel, appStore.selectedProvider)
-    : '',
+    ? appStore.displayModelName(effectiveModel.value, effectiveProvider.value)
+    : effectiveModel.value || '',
 )
 
 function isCustomModel(model: string, provider: string) {
@@ -83,10 +110,18 @@ function isGroupCollapsed(provider: string) {
   return !!collapsedGroups.value[provider]
 }
 
-function handleSelect(model: string, provider: string) {
+async function handleSelect(model: string, provider: string) {
   const meta = activeModelGroups.value.find(g => g.provider === provider)?.model_meta?.[model]
   if (meta?.disabled) return
-  appStore.switchModel(model, provider)
+
+  if (isConversationRoute.value && activeSession.value?.id) {
+    const ok = await chatStore.switchSessionModel(model, provider, activeSession.value.id)
+    if (!ok) return
+  }
+
+  // Keep the persisted default in sync with the user's selected model.
+  await appStore.switchModel(model, provider)
+
   showModal.value = false
   searchQuery.value = ''
 }
@@ -99,13 +134,21 @@ function modelAlias(model: string, provider: string) {
   return appStore.getModelAlias(model, provider)
 }
 
-function handleCustomSubmit() {
+async function handleCustomSubmit() {
   const model = customInput.value.trim()
   if (!model || !customProvider.value) return
   // 拦截 disabled 模型，避免 custom input 绕过列表里的灰显限制
   const meta = activeModelGroups.value.find(g => g.provider === customProvider.value)?.model_meta?.[model]
   if (meta?.disabled) return
-  appStore.switchModel(model, customProvider.value)
+
+  if (isConversationRoute.value && activeSession.value?.id) {
+    const ok = await chatStore.switchSessionModel(model, customProvider.value, activeSession.value.id)
+    if (!ok) return
+  }
+
+  // Keep the persisted default in sync with the user's selected model.
+  await appStore.switchModel(model, customProvider.value)
+
   showModal.value = false
   searchQuery.value = ''
   customInput.value = ''
@@ -115,7 +158,7 @@ function openModal() {
   collapsedGroups.value = {}
   searchQuery.value = ''
   customInput.value = ''
-  customProvider.value = appStore.selectedProvider
+  customProvider.value = effectiveProvider.value
   showModal.value = true
 }
 </script>
@@ -124,7 +167,7 @@ function openModal() {
   <div class="model-selector">
     <div class="model-label">{{ t('models.title') }}</div>
     <button class="model-trigger" @click="openModal">
-      <span class="model-name" :title="appStore.selectedModel">{{ selectedDisplayName || '—' }}</span>
+      <span class="model-name" :title="effectiveModel">{{ selectedDisplayName || '—' }}</span>
       <svg class="model-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <polyline points="6 9 12 15 18 9" />
       </svg>
@@ -163,7 +206,7 @@ function openModal() {
               :key="model"
               class="model-item"
               :class="{
-                active: model === appStore.selectedModel && group.provider === appStore.selectedProvider,
+                active: model === effectiveModel && group.provider === effectiveProvider,
                 disabled: !!group.model_meta?.[model]?.disabled,
               }"
               :title="group.model_meta?.[model]?.disabled ? t('models.disabledTooltip') : ''"
@@ -187,7 +230,7 @@ function openModal() {
               >
                 ×
               </button>
-              <svg v-if="model === appStore.selectedModel && group.provider === appStore.selectedProvider" class="model-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <svg v-if="model === effectiveModel && group.provider === effectiveProvider" class="model-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="20 6 9 17 4 12" />
               </svg>
             </div>

@@ -205,6 +205,35 @@ describe('models controller — model visibility', () => {
     })
   })
 
+  it('moves the configured default provider group to the front for a profile response', async () => {
+    mockReadConfigYamlForProfile.mockResolvedValue({
+      model: {
+        default: 'local-model',
+        provider: 'custom',
+        base_url: 'http://local.test/v1',
+      },
+      custom_providers: [
+        {
+          name: 'Local',
+          base_url: 'http://local.test/v1',
+          model: 'local-model',
+        },
+      ],
+    })
+
+    const ctx = makeCtx()
+    ctx.query.profile = 'default'
+    await ctrl.getAvailable(ctx)
+
+    expect(ctx.status).toBe(200)
+    expect(ctx.body.default).toBe('local-model')
+    expect(ctx.body.default_provider).toBe('custom:local')
+    expect(ctx.body.groups.map((group: any) => group.provider).slice(0, 2)).toEqual([
+      'custom:local',
+      'deepseek',
+    ])
+  })
+
   it('prefers cached live provider catalogs over static built-in presets', async () => {
     mockReadConfigYamlForProfile.mockResolvedValue({ model: { default: 'deepseek-live', provider: 'deepseek' } })
     mockGetCachedProviderModels.mockImplementation((_cache: unknown, provider: string) => {

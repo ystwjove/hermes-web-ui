@@ -39,6 +39,34 @@ describe('session browser prefs store', () => {
     expect(JSON.parse(window.localStorage.getItem('hermes_session_pins_v1_default') || '[]')).toEqual(['session-1'])
   })
 
+  it('archives sessions per profile and removes archived sessions from pins', () => {
+    const profilesStore = useProfilesStore()
+    profilesStore.activeProfileName = 'default'
+    const store = useSessionBrowserPrefsStore()
+
+    store.togglePinned('session-1')
+    expect(store.toggleArchived('session-1')).toBe(true)
+    expect(store.pinnedIds).toEqual([])
+    expect(store.archivedIds).toEqual(['session-1'])
+    expect(JSON.parse(window.localStorage.getItem('hermes_session_archived_v1_default') || '[]')).toEqual(['session-1'])
+
+    expect(store.toggleArchived('session-1')).toBe(false)
+    expect(store.archivedIds).toEqual([])
+  })
+
+  it('prunes archived sessions together with pins', () => {
+    const profilesStore = useProfilesStore()
+    profilesStore.activeProfileName = 'default'
+    const store = useSessionBrowserPrefsStore()
+
+    store.toggleArchived('session-1')
+    store.toggleArchived('session-2')
+
+    expect(store.pruneMissingSessions(['session-2'])).toBe(true)
+    expect(store.archivedIds).toEqual(['session-2'])
+    expect(JSON.parse(window.localStorage.getItem('hermes_session_archived_v1_default') || '[]')).toEqual(['session-2'])
+  })
+
   it('reloads pin and human-only preferences automatically when the active profile changes', async () => {
     const profilesStore = useProfilesStore()
     profilesStore.activeProfileName = 'default'
@@ -46,9 +74,11 @@ describe('session browser prefs store', () => {
 
     expect(store.humanOnly).toBe(true)
     store.togglePinned('default-session')
+    store.toggleArchived('default-archived')
     store.setHumanOnly(false)
 
     window.localStorage.setItem('hermes_session_pins_v1_work', JSON.stringify(['work-session']))
+    window.localStorage.setItem('hermes_session_archived_v1_work', JSON.stringify(['work-archived']))
     window.localStorage.setItem('hermes_human_only_v1_work', JSON.stringify(true))
 
     profilesStore.activeProfileName = 'work'
@@ -56,12 +86,14 @@ describe('session browser prefs store', () => {
 
     expect(store.profileName).toBe('work')
     expect(store.pinnedIds).toEqual(['work-session'])
+    expect(store.archivedIds).toEqual(['work-archived'])
     expect(store.humanOnly).toBe(true)
 
     profilesStore.activeProfileName = 'default'
     await nextTick()
 
     expect(store.pinnedIds).toEqual(['default-session'])
+    expect(store.archivedIds).toEqual(['default-archived'])
     expect(store.humanOnly).toBe(false)
   })
 })

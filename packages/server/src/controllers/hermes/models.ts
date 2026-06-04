@@ -415,6 +415,15 @@ async function buildAvailableForProfile(
   }
   const groupsWithCustomModels = applyCustomModels(groups, normalizeCustomModels(appConfig.customModels))
 
+  // Put the default provider's group first so the active model is easier to find.
+  if (currentDefaultProvider) {
+    const idx = groupsWithCustomModels.findIndex(g => g.provider === currentDefaultProvider)
+    if (idx > 0) {
+      const [defaultGroup] = groupsWithCustomModels.splice(idx, 1)
+      groupsWithCustomModels.unshift(defaultGroup)
+    }
+  }
+
   return { profile, default: currentDefault, default_provider: currentDefaultProvider, groups: groupsWithCustomModels }
 }
 

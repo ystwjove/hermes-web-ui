@@ -49,6 +49,7 @@ vi.mock('@/utils/completion-sound', () => ({
 }))
 
 import { useChatStore, type Session } from '@/stores/hermes/chat'
+import { setSessionModel } from '@/api/hermes/sessions'
 
 function makeSession(): Session {
   return {
@@ -126,6 +127,30 @@ describe('chat store session.command fanout', () => {
         role: 'command',
         content: 'Goal cleared.',
         commandAction: 'clear',
+      }),
+    ])
+  })
+
+  it('adds a system notification when the active session model changes', async () => {
+    vi.mocked(setSessionModel).mockResolvedValue(true)
+    const store = useChatStore()
+    const session = makeSession()
+    session.model = 'old-model'
+    session.provider = 'deepseek'
+    store.sessions = [session]
+    store.activeSessionId = 'session-1'
+    store.activeSession = session
+
+    const ok = await store.switchSessionModel('new-model', 'openai', 'session-1')
+
+    expect(ok).toBe(true)
+    expect(setSessionModel).toHaveBeenCalledWith('session-1', 'new-model', 'openai')
+    expect(session.model).toBe('new-model')
+    expect(session.provider).toBe('openai')
+    expect(session.messages).toEqual([
+      expect.objectContaining({
+        role: 'system',
+        content: expect.stringContaining('new-model'),
       }),
     ])
   })
