@@ -18,6 +18,7 @@ const mockProfilesApi = vi.hoisted(() => ({
 vi.mock('@/api/hermes/profiles', () => mockProfilesApi)
 
 import { useProfilesStore } from '@/stores/hermes/profiles'
+import { useAppStore } from '@/stores/hermes/app'
 
 describe('Profiles Store', () => {
   beforeEach(() => {
@@ -61,10 +62,14 @@ describe('Profiles Store', () => {
     ])
 
     const store = useProfilesStore()
+    const appStore = useAppStore()
+    const reloadModels = vi.fn()
+    appStore.reloadModels = reloadModels
     const result = await store.createProfile('new-profile', false)
 
     expect(result.success).toBe(true)
     expect(mockProfilesApi.createProfile).toHaveBeenCalledWith('new-profile', false)
+    expect(reloadModels).toHaveBeenCalledOnce()
     expect(store.profiles).toHaveLength(2)
   })
 

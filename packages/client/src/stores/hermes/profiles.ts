@@ -99,7 +99,10 @@ export const useProfilesStore = defineStore('profiles', () => {
 
   async function createProfile(name: string, clone?: boolean) {
     const res = await profilesApi.createProfile(name, clone)
-    if (res.success) await fetchProfiles()
+    if (res.success) {
+      await fetchProfiles()
+      await useAppStore().reloadModels()
+    }
     return res
   }
 

@@ -188,6 +188,7 @@ export async function refreshProviderModelCache(): Promise<{ success: boolean }>
 export async function updateDefaultModel(data: {
   default: string
   provider?: string
+  profile?: string
   base_url?: string
   api_key?: string
 }): Promise<void> {
