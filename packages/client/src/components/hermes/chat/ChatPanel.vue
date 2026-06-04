@@ -195,10 +195,11 @@ function getModelGroupsForProfile(profile: string) {
 
 async function ensureNewChatModelsForProfile(profile: string) {
   if (!profile) return;
-  const hasProfileModels = appStore.profileModelGroups.some(
+  const profileModels = appStore.profileModelGroups.find(
     (entry) => entry.profile === profile,
   );
-  if (!hasProfileModels) {
+  const hasModelGroups = !!profileModels?.groups?.some((group) => group.models.length > 0);
+  if (!hasModelGroups) {
     await appStore.loadModelsForProfile(profile);
   }
 }
@@ -273,7 +274,6 @@ async function openNewChatModal() {
   try {
     await profilesStore.fetchProfiles();
     newChatProfile.value = resolveNewChatProfile();
-    await appStore.loadModels(true);
     await ensureNewChatModelsForProfile(newChatProfile.value);
     syncNewChatModelSelection();
   } finally {
