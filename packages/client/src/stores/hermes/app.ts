@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import {
   checkHealth,
   fetchAvailableModels,
+  fetchAvailableModelsForProfile,
   addCustomModel as persistCustomModel,
   removeCustomModel as deletePersistedCustomModel,
   updateDefaultModel,
@@ -160,6 +161,28 @@ export const useAppStore = defineStore('app', () => {
       }
     })()
     return modelsLoadPromise
+  }
+
+  async function loadModelsForProfile(profile: string) {
+    if (!hasApiKey()) return
+    const cleanProfile = profile.trim()
+    if (!cleanProfile) return
+    const res = await fetchAvailableModelsForProfile(cleanProfile)
+    modelAliases.value = res.model_aliases || {}
+    modelVisibility.value = res.model_visibility || {}
+    customModels.value = res.custom_models || {}
+    const profileEntry = res.profiles?.find(entry => entry.profile === cleanProfile) || {
+      profile: cleanProfile,
+      default: res.default,
+      default_provider: res.default_provider,
+      groups: res.groups,
+    }
+    const existingIndex = profileModelGroups.value.findIndex(entry => entry.profile === cleanProfile)
+    if (existingIndex >= 0) {
+      profileModelGroups.value.splice(existingIndex, 1, profileEntry)
+    } else {
+      profileModelGroups.value.push(profileEntry)
+    }
   }
 
   async function waitForModelsForRun(timeoutMs = 15000) {
@@ -348,6 +371,7 @@ export const useAppStore = defineStore('app', () => {
     maxTokens,
     checkConnection,
     loadModels,
+    loadModelsForProfile,
     waitForModelsForRun,
     reloadModels,
     applyAvailableModelsResponse,

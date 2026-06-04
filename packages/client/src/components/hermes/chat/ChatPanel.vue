@@ -193,6 +193,16 @@ function getModelGroupsForProfile(profile: string) {
   return profileModels?.groups || [];
 }
 
+async function ensureNewChatModelsForProfile(profile: string) {
+  if (!profile) return;
+  const hasProfileModels = appStore.profileModelGroups.some(
+    (entry) => entry.profile === profile,
+  );
+  if (!hasProfileModels) {
+    await appStore.loadModelsForProfile(profile);
+  }
+}
+
 function getDefaultModelForProfile(profile: string) {
   const groups = getModelGroupsForProfile(profile);
   const profileModels = appStore.profileModelGroups.find(
@@ -251,22 +261,27 @@ async function openNewChatModal() {
   newChatLoading.value = true;
   try {
     if (profilesStore.profiles.length === 0) await profilesStore.fetchProfiles();
-    if (appStore.modelGroups.length === 0 && appStore.profileModelGroups.length === 0) {
-      await appStore.loadModels();
-    }
     newChatProfile.value =
       profilesStore.activeProfileName ||
       profilesStore.profiles.find((profile) => profile.active)?.name ||
       profilesStore.profiles[0]?.name ||
       "default";
+    await appStore.loadModels(true);
+    await ensureNewChatModelsForProfile(newChatProfile.value);
     syncNewChatModelSelection();
   } finally {
     newChatLoading.value = false;
   }
 }
 
-function handleNewChatProfileChange(value: string) {
+async function handleNewChatProfileChange(value: string) {
   newChatProfile.value = value;
+  newChatLoading.value = true;
+  try {
+    await ensureNewChatModelsForProfile(value);
+  } finally {
+    newChatLoading.value = false;
+  }
   syncNewChatModelSelection();
 }
 

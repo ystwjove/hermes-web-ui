@@ -5,6 +5,7 @@ import { createPinia, setActivePinia } from 'pinia'
 const mockSystemApi = vi.hoisted(() => ({
   checkHealth: vi.fn(),
   fetchAvailableModels: vi.fn(),
+  fetchAvailableModelsForProfile: vi.fn(),
   addCustomModel: vi.fn(),
   removeCustomModel: vi.fn(),
   updateDefaultModel: vi.fn(),
@@ -488,5 +489,49 @@ describe('App Store', () => {
     expect(store.modelGroups[0].available_models).toEqual(['deepseek-v4-flash'])
     expect(store.profileModelGroups[0].groups[0].models).toEqual(['deepseek-v4-flash'])
     expect(store.profileModelGroups[0].groups[0].available_models).toEqual(['deepseek-v4-flash'])
+  })
+
+  it('loads models for a specific profile into profile model groups', async () => {
+    mockSystemApi.fetchAvailableModelsForProfile.mockResolvedValue({
+      default: 'qwen-plus',
+      default_provider: 'qwen',
+      groups: [{
+        provider: 'qwen',
+        label: 'Qwen',
+        base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+        models: ['qwen-plus'],
+        api_key: '',
+      }],
+      allProviders: [],
+      profiles: [{
+        profile: 'x',
+        default: 'qwen-plus',
+        default_provider: 'qwen',
+        groups: [{
+          provider: 'qwen',
+          label: 'Qwen',
+          base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+          models: ['qwen-plus'],
+          api_key: '',
+        }],
+      }],
+      model_aliases: { qwen: { 'qwen-plus': 'Qwen Plus' } },
+      model_visibility: { qwen: { mode: 'all', models: [] } },
+      custom_models: {},
+    })
+    const store = useAppStore()
+
+    await store.loadModelsForProfile('x')
+
+    expect(mockSystemApi.fetchAvailableModelsForProfile).toHaveBeenCalledWith('x')
+    expect(store.profileModelGroups).toEqual([
+      expect.objectContaining({
+        profile: 'x',
+        default: 'qwen-plus',
+        default_provider: 'qwen',
+      }),
+    ])
+    expect(store.profileModelGroups[0].groups[0].models).toEqual(['qwen-plus'])
+    expect(store.modelAliases.qwen['qwen-plus']).toBe('Qwen Plus')
   })
 })
