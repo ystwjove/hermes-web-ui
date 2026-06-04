@@ -101,6 +101,34 @@ describe('config mutating controllers', () => {
     expect(researchConfig.model).toEqual({ default: 'research-model', provider: 'deepseek' })
   })
 
+  it('setConfigModel persists custom provider config for profile model selection', async () => {
+    await writeFile(join(hermesHome, 'config.yaml'), 'model:\n  default: old\n', 'utf-8')
+    const { setConfigModel } = await loadModelsController()
+    const ctx = makeCtx({
+      default: 'deepseek-ai/DeepSeek-V3.2',
+      provider: 'custom:siliconflow',
+      base_url: 'https://api.siliconflow.cn',
+      api_key: 'sk-test',
+    })
+
+    await setConfigModel(ctx)
+
+    expect(ctx.body).toEqual({ success: true })
+    const config = YAML.load(await readFile(join(hermesHome, 'config.yaml'), 'utf-8')) as any
+    expect(config.model).toEqual({
+      default: 'deepseek-ai/DeepSeek-V3.2',
+      provider: 'custom:siliconflow',
+    })
+    expect(config.custom_providers).toEqual([
+      {
+        name: 'siliconflow',
+        base_url: 'https://api.siliconflow.cn',
+        api_key: 'sk-test',
+        model: 'deepseek-ai/DeepSeek-V3.2',
+      },
+    ])
+  })
+
   it('skill toggle preserves unrelated config while adding and removing disabled skills', async () => {
     await writeFile(join(hermesHome, 'config.yaml'), [
       'model:',

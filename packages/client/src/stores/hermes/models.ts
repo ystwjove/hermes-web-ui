@@ -29,6 +29,7 @@ export const useModelsStore = defineStore('models', () => {
         provider: g.provider,
         label: g.label,
         base_url: g.base_url,
+        api_key: g.api_key,
         isDefault: m === defaultModel.value && g.provider === defaultProvider.value,
       })),
     ),

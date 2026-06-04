@@ -92,10 +92,13 @@ async function handleSave() {
         const [provider, ...modelParts] = selectedModel.value.split('::')
         const modelId = modelParts.join('::')
         if (provider && modelId) {
+          const modelMeta = modelsStore.allModels.find(model => model.provider === provider && model.id === modelId)
           try {
             await updateDefaultModel({
               default: modelId,
               provider,
+              base_url: modelMeta?.base_url,
+              api_key: modelMeta?.api_key,
               profile: name.value.trim(),
             })
             await appStore.reloadModels()

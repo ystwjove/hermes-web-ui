@@ -912,7 +912,12 @@ export async function getConfigModels(ctx: any) {
 }
 
 export async function setConfigModel(ctx: any) {
-  const { default: defaultModel, provider: reqProvider } = ctx.request.body as { default: string; provider?: string }
+  const { default: defaultModel, provider: reqProvider, base_url: baseUrl, api_key: apiKey } = ctx.request.body as {
+    default: string
+    provider?: string
+    base_url?: string
+    api_key?: string
+  }
   if (!defaultModel) {
     ctx.status = 400
     ctx.body = { error: 'Missing default model' }
@@ -924,6 +929,23 @@ export async function setConfigModel(ctx: any) {
       config.model = {}
       config.model.default = defaultModel
       if (reqProvider) { config.model.provider = reqProvider }
+      if (reqProvider?.startsWith('custom:') && baseUrl) {
+        const providerName = providerKeyWithoutCustomPrefix(reqProvider)
+        const customProviders = Array.isArray(config.custom_providers) ? [...config.custom_providers] : []
+        const existingIndex = customProviders.findIndex((entry: any) => (
+          String(entry?.name || '').trim().toLowerCase() === providerName.toLowerCase()
+        ))
+        const providerConfig = {
+          ...(existingIndex >= 0 && typeof customProviders[existingIndex] === 'object' ? customProviders[existingIndex] : {}),
+          name: providerName,
+          base_url: baseUrl,
+          model: defaultModel,
+          ...(apiKey ? { api_key: apiKey } : {}),
+        }
+        if (existingIndex >= 0) customProviders[existingIndex] = providerConfig
+        else customProviders.push(providerConfig)
+        config.custom_providers = customProviders
+      }
       return config
     })
     ctx.body = { success: true }

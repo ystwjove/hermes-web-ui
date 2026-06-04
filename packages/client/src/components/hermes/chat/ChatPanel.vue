@@ -256,16 +256,23 @@ function syncNewChatModelSelection() {
   newChatModel.value = defaults.model;
 }
 
+function resolveNewChatProfile() {
+  const profileNames = new Set(profilesStore.profiles.map((profile) => profile.name));
+  const candidates = [
+    profilesStore.activeProfileName,
+    profilesStore.profiles.find((profile) => profile.active)?.name,
+    profilesStore.profiles[0]?.name,
+    "default",
+  ].filter((profile): profile is string => !!profile);
+  return candidates.find((profile) => profileNames.has(profile)) || profilesStore.profiles[0]?.name || "default";
+}
+
 async function openNewChatModal() {
   showNewChatModal.value = true;
   newChatLoading.value = true;
   try {
-    if (profilesStore.profiles.length === 0) await profilesStore.fetchProfiles();
-    newChatProfile.value =
-      profilesStore.activeProfileName ||
-      profilesStore.profiles.find((profile) => profile.active)?.name ||
-      profilesStore.profiles[0]?.name ||
-      "default";
+    await profilesStore.fetchProfiles();
+    newChatProfile.value = resolveNewChatProfile();
     await appStore.loadModels(true);
     await ensureNewChatModelsForProfile(newChatProfile.value);
     syncNewChatModelSelection();
