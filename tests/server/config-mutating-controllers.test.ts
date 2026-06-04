@@ -129,6 +129,29 @@ describe('config mutating controllers', () => {
     ])
   })
 
+  it('setConfigModel persists builtin provider env for profile model selection', async () => {
+    const researchDir = join(hermesHome, 'profiles', 'research')
+    await mkdir(researchDir, { recursive: true })
+    await writeFile(join(researchDir, 'config.yaml'), 'model:\n  default: old\n', 'utf-8')
+    const { setConfigModel } = await loadModelsController()
+    const ctx = makeCtx({
+      default: 'glm-5.1',
+      provider: 'zai',
+      base_url: 'https://api.z.ai/api/paas/v4',
+      api_key: 'sk-zai',
+    })
+    ctx.get = vi.fn((name: string) => name.toLowerCase() === 'x-hermes-profile' ? 'research' : '')
+
+    await setConfigModel(ctx)
+
+    expect(ctx.body).toEqual({ success: true })
+    const config = YAML.load(await readFile(join(researchDir, 'config.yaml'), 'utf-8')) as any
+    const env = await readFile(join(researchDir, '.env'), 'utf-8')
+    expect(config.model).toEqual({ default: 'glm-5.1', provider: 'zai' })
+    expect(env).toContain('GLM_API_KEY=sk-zai')
+    expect(env).toContain('GLM_BASE_URL=https://api.z.ai/api/paas/v4')
+  })
+
   it('skill toggle preserves unrelated config while adding and removing disabled skills', async () => {
     await writeFile(join(hermesHome, 'config.yaml'), [
       'model:',

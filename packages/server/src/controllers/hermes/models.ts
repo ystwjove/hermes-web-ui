@@ -2,7 +2,7 @@ import { readFile } from 'fs/promises'
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { getActiveEnvPath, getActiveAuthPath, getActiveProfileName, getProfileDir, listProfileNamesFromDisk } from '../../services/hermes/hermes-profile'
-import { readConfigYaml, readConfigYamlForProfile, updateConfigYaml, updateConfigYamlForProfile, fetchProviderModels, buildModelGroups, PROVIDER_ENV_MAP } from '../../services/config-helpers'
+import { readConfigYaml, readConfigYamlForProfile, updateConfigYaml, updateConfigYamlForProfile, fetchProviderModels, buildModelGroups, PROVIDER_ENV_MAP, saveEnvValueForProfile } from '../../services/config-helpers'
 import { buildProviderModelMap, PROVIDER_PRESETS } from '../../shared/providers'
 import { getCopilotModelsDetailed, resolveCopilotOAuthToken, type CopilotModelMeta } from '../../services/hermes/copilot-models'
 import { readAppConfig, writeAppConfig, type ModelVisibilityRule } from '../../services/app-config'
@@ -948,6 +948,15 @@ export async function setConfigModel(ctx: any) {
       }
       return config
     })
+    if (reqProvider && !reqProvider.startsWith('custom:')) {
+      const envMapping = PROVIDER_ENV_MAP[reqProvider]
+      if (envMapping?.api_key_env && apiKey) {
+        await saveEnvValueForProfile(profile, envMapping.api_key_env, apiKey)
+      }
+      if (envMapping?.base_url_env && baseUrl) {
+        await saveEnvValueForProfile(profile, envMapping.base_url_env, baseUrl)
+      }
+    }
     ctx.body = { success: true }
   } catch (err: any) {
     ctx.status = 500
