@@ -244,8 +244,9 @@ describe('models controller — model visibility', () => {
     ctx.get = vi.fn((name: string) => name.toLowerCase() === 'x-hermes-profile' ? 'private' : '')
     await ctrl.getAvailable(ctx)
 
-    expect(mockReadConfigYamlForProfile).toHaveBeenCalledTimes(1)
+    expect(mockReadConfigYamlForProfile).toHaveBeenCalledTimes(2)
     expect(mockReadConfigYamlForProfile).toHaveBeenCalledWith('research')
+    expect(mockReadConfigYamlForProfile).toHaveBeenCalledWith('default')
     expect(ctx.body.profiles.map((profile: any) => profile.profile)).toEqual(['research'])
     expect(ctx.body.groups).toEqual(expect.arrayContaining([
       expect.objectContaining({ provider: 'deepseek' }),

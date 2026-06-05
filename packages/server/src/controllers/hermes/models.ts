@@ -432,9 +432,7 @@ export async function getAvailable(ctx: any) {
       const customModels = normalizeCustomModels(appConfig.customModels)
       const modelCatalogCache = await readProviderModelCatalogCache()
       const visibleProfiles = visibleProfileNamesForUser(ctx)
-      const defaultProfileResult = visibleProfiles.includes('default')
-        ? await buildAvailableForProfile('default', modelCatalogCache, appConfig)
-        : null
+      const defaultProfileResult = await buildAvailableForProfile('default', modelCatalogCache, appConfig)
       const profileResults = await Promise.all(
         visibleProfiles.map(profile => {
           if (profile === 'default') return Promise.resolve(defaultProfileResult!)
@@ -480,8 +478,7 @@ export async function getAvailable(ctx: any) {
     const modelVisibilityForProfile = normalizeModelVisibility(appConfigForProfile.modelVisibility)
     const customModelsForProfile = normalizeCustomModels(appConfigForProfile.customModels)
     const modelCatalogCacheForProfile = await readProviderModelCatalogCache()
-    const visibleProfilesForProfileRequest = visibleProfileNamesForUser(ctx)
-    const defaultProfileResultForProfileRequest = requestedProfile !== 'default' && visibleProfilesForProfileRequest.includes('default')
+    const defaultProfileResultForProfileRequest = requestedProfile !== 'default'
       ? await buildAvailableForProfile('default', modelCatalogCacheForProfile, appConfigForProfile)
       : null
     const profileResult = await buildAvailableForProfile(
