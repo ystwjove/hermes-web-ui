@@ -288,6 +288,7 @@ async function buildAvailableForProfile(
   profile: string,
   modelCatalogCache: ProviderModelCatalogCache,
   appConfig: Awaited<ReturnType<typeof readAppConfig>>,
+  inheritedDefaultGroups: AvailableGroup[] | null = null,
 ): Promise<{
   profile: string
   default: string
@@ -414,8 +415,11 @@ async function buildAvailableForProfile(
     g.available_models = Array.from(new Set(g.available_models || g.models))
   }
   const groupsWithCustomModels = applyCustomModels(groups, normalizeCustomModels(appConfig.customModels))
+  const effectiveGroups = profile !== 'default' && inheritedDefaultGroups?.length
+    ? mergeAvailableGroups([...groupsWithCustomModels, ...inheritedDefaultGroups])
+    : groupsWithCustomModels
 
-  return { profile, default: currentDefault, default_provider: currentDefaultProvider, groups: groupsWithCustomModels }
+  return { profile, default: currentDefault, default_provider: currentDefaultProvider, groups: effectiveGroups }
 }
 
 export async function getAvailable(ctx: any) {
@@ -428,8 +432,14 @@ export async function getAvailable(ctx: any) {
       const customModels = normalizeCustomModels(appConfig.customModels)
       const modelCatalogCache = await readProviderModelCatalogCache()
       const visibleProfiles = visibleProfileNamesForUser(ctx)
+      const defaultProfileResult = visibleProfiles.includes('default')
+        ? await buildAvailableForProfile('default', modelCatalogCache, appConfig)
+        : null
       const profileResults = await Promise.all(
-        visibleProfiles.map(profile => buildAvailableForProfile(profile, modelCatalogCache, appConfig)),
+        visibleProfiles.map(profile => {
+          if (profile === 'default') return Promise.resolve(defaultProfileResult!)
+          return buildAvailableForProfile(profile, modelCatalogCache, appConfig, defaultProfileResult?.groups || null)
+        }),
       )
       const mergedGroups = mergeAvailableGroups(profileResults.flatMap(result => result.groups))
       const groupsWithAliases = applyModelAliases(mergedGroups, modelAliases)
@@ -470,7 +480,16 @@ export async function getAvailable(ctx: any) {
     const modelVisibilityForProfile = normalizeModelVisibility(appConfigForProfile.modelVisibility)
     const customModelsForProfile = normalizeCustomModels(appConfigForProfile.customModels)
     const modelCatalogCacheForProfile = await readProviderModelCatalogCache()
-    const profileResult = await buildAvailableForProfile(requestedProfile, modelCatalogCacheForProfile, appConfigForProfile)
+    const visibleProfilesForProfileRequest = visibleProfileNamesForUser(ctx)
+    const defaultProfileResultForProfileRequest = requestedProfile !== 'default' && visibleProfilesForProfileRequest.includes('default')
+      ? await buildAvailableForProfile('default', modelCatalogCacheForProfile, appConfigForProfile)
+      : null
+    const profileResult = await buildAvailableForProfile(
+      requestedProfile,
+      modelCatalogCacheForProfile,
+      appConfigForProfile,
+      defaultProfileResultForProfileRequest?.groups || null,
+    )
     const profileGroupsWithAliases = applyModelAliases(profileResult.groups, modelAliasesForProfile)
     const visibleProfileGroups = applyModelVisibility(profileGroupsWithAliases, modelVisibilityForProfile)
     const visibleProfileDefault = resolveVisibleDefault(profileResult.default, profileResult.default_provider, visibleProfileGroups)

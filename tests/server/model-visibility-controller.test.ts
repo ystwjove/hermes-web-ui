@@ -32,7 +32,9 @@ vi.mock('../../packages/server/src/services/hermes/hermes-profile', () => ({
   getActiveEnvPath: () => '/fake/home/.hermes/.env',
   getActiveAuthPath: () => '/fake/home/.hermes/auth.json',
   getActiveProfileName: () => 'default',
-  getProfileDir: () => '/fake/home/.hermes',
+  getProfileDir: (name: string) => name && name !== 'default'
+    ? `/fake/home/.hermes/profiles/${name}`
+    : '/fake/home/.hermes',
   listProfileNamesFromDisk: mockListProfileNamesFromDisk,
 }))
 
@@ -277,10 +279,49 @@ describe('models controller — model visibility', () => {
     ctx.state = { profile: { name: 'default' }, user: { id: 1, username: 'admin', role: 'super_admin' } }
     await ctrl.getAvailable(ctx)
 
-    expect(mockReadConfigYamlForProfile).toHaveBeenCalledTimes(1)
+    expect(mockReadConfigYamlForProfile).toHaveBeenCalledTimes(2)
     expect(mockReadConfigYamlForProfile).toHaveBeenCalledWith('research')
+    expect(mockReadConfigYamlForProfile).toHaveBeenCalledWith('default')
     expect(ctx.body.profiles.map((profile: any) => profile.profile)).toEqual(['research'])
   })
+
+  it('inherits default profile providers for single-profile model fetches', async () => {
+    mockReadConfigYamlForProfile.mockImplementation(async (profile: string) => ({
+      model: profile === 'research'
+        ? { default: 'local-model', provider: 'lmstudio' }
+        : { default: 'deepseek-chat', provider: 'deepseek' },
+    }))
+    mockReadFile.mockImplementation(async (path: string) => {
+      if (path.includes('/profiles/research/.env')) {
+        return 'LM_API_KEY=local\nLM_BASE_URL=http://127.0.0.1:1234/v1\n'
+      }
+      return 'DEEPSEEK_API_KEY=sk-test\n'
+    })
+
+    const ctx = makeCtx()
+    ctx.query = { profile: 'research' }
+    await ctrl.getAvailable(ctx)
+
+    expect(ctx.status).toBe(200)
+    expect(ctx.body.default).toBe('local-model')
+    expect(ctx.body.default_provider).toBe('lmstudio')
+    expect(ctx.body.groups).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        provider: 'lmstudio',
+        models: ['local-model'],
+      }),
+      expect.objectContaining({
+        provider: 'deepseek',
+        models: ['deepseek-chat', 'deepseek-reasoner'],
+      }),
+    ]))
+    expect(ctx.body.profiles[0]).toMatchObject({
+      profile: 'research',
+      default: 'local-model',
+      default_provider: 'lmstudio',
+    })
+  })
+
   it('accepts OAuth providers stored in credential_pool entries', async () => {
     mockExistsSync.mockReturnValue(true)
     mockReadFileSync.mockReturnValue(JSON.stringify({
